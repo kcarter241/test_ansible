@@ -1,0 +1,1 @@
+rails ansible_host=10.0.0.20 ansible_user=vagrant

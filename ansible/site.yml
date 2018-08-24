@@ -1,0 +1,111 @@
+---
+- hosts: rails
+  become: yes
+  tasks:
+    - name: Update all packages
+      yum:
+        name: "*"
+        state: "latest"
+
+    - name: Install Ruby dependencies
+      yum:
+        name: "{{ item }}"
+        state: "installed"
+      with_items:
+        - gcc-c++
+        - patch
+        - readline
+        - readline-devel
+        - zlib
+        - zlib-devel
+        - libyaml-devel
+        - libffi-devel
+        - openssl-devel
+        - make
+        - bzip2
+        - autoconf
+        - automake
+        - libtool
+        - bison
+        - sqlite-devel
+        - git
+    
+    - name: Download ruby-install
+      become: no
+      get_url:
+        url: "https://github.com/postmodern/ruby-install/archive/v0.6.1.tar.gz"
+        dest: "/home/vagrant/ruby-install.tar.gz"
+
+    - name: Extract ruby-install tarball
+      become: no
+      unarchive:
+        src: "/home/vagrant/ruby-install.tar.gz"
+        dest: "/home/vagrant"
+        creates: "/home/vagrant/ruby-install-0.6.1"
+        remote_src: yes
+
+    - name: Install Ruby-install
+      make:
+        chdir: /home/vagrant/ruby-install-0.6.1
+        target: install
+
+    - name: Install Ruby
+      become: no
+      command: "/usr/local/bin/ruby-install --no-install-deps ruby 2.5.0"
+      args:
+        creates: "/home/vagrant/.rubies/ruby-2.5.0"
+
+    - name: Download chruby
+      become: no
+      get_url:
+        url: "https://github.com/postmodern/chruby/archive/v0.3.9.tar.gz"
+        dest: "/home/vagrant/chruby-0.3.9.tar.gz"
+
+    - name: Extract chruby
+      become: no
+      unarchive:
+        src: "/home/vagrant/chruby-0.3.9.tar.gz"
+        dest: "/home/vagrant"
+        creates: "/home/vagrant/chruby-0.3.9"
+        remote_src: yes
+
+    - name: Install chruby
+      make:
+        chdir: "/home/vagrant/chruby-0.3.9"
+        target: "install"
+
+    - name: Load chruby for deploy user
+      lineinfile:
+        path: "/home/vagrant/.bashrc"
+        regexp: "chruby.sh$"
+        line: "source /usr/local/share/chruby/chruby.sh"
+        insertbefore: BOF
+
+    - name: Set ruby version for deploy user
+      lineinfile:
+        path: "/home/vagrant/.bash_profile"
+        regexp: "^chruby"
+        line: "chruby ruby-2.5.0"
+
+    - name: Install bundler
+      become: no
+      command: 'chruby-exec ruby-2.5.0 -- gem install bundler'
+      args:
+        creates: "/home/vagrant/.gem/ruby/2.5.0/bin/bundle"
+
+    - name: Install Nginx
+      yum:
+        name: "nginx"
+        state: "installed"
+
+    - name: Upload nginx config
+      copy:
+        src: "nginx_config"
+        dest: "/etc/nginx/conf.d/rails"
+      notify: restart nginx
+
+  handlers:
+    - name: restart nginx
+      service:
+        name: "nginx"
+        state: "restarted"
